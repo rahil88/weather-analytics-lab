@@ -1,0 +1,115 @@
+# Weather Prediction Analytics — local stack
+#
+#   airflow   : Airflow 2.10.1 (scheduler + webserver, LocalExecutor) on http://localhost:8081
+#               runs the ETL DAG (Open-Meteo -> Snowflake) and the dbt DAG
+#   superset  : Apache Superset 4.1.1 on http://localhost:8088 (BI dashboard on Snowflake)
+#   postgres  : Airflow metadata database
+#
+# Every package in _PIP_ADDITIONAL_REQUIREMENTS is pinned so pip does not backtrack
+# at container startup. Airflow + Snowflake pins follow the official constraints file
+# https://raw.githubusercontent.com/apache/airflow/constraints-2.10.1/constraints-3.12.txt
+# and the dbt pins are the matching 1.8.x line for dbt-snowflake==1.8.1.
+#
+# The Snowflake private key is NOT committed: put it at ./keys/rsa_key.p8 (see README).
+---
+x-airflow-common:
+  &airflow-common
+  image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.10.1}
+  environment:
+    &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__CORE__FERNET_KEY: ''
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
+    _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:- apache-airflow-providers-snowflake==5.7.0 snowflake-connector-python==3.12.2 snowflake-sqlalchemy==1.6.1 dbt-core==1.8.7 dbt-snowflake==1.8.1 dbt-common==1.10.0 dbt-adapters==1.7.0}
+  volumes:
+    - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
+    - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
+    - ${AIRFLOW_PROJ_DIR:-.}/config:/opt/airflow/config
+    - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
+    - ${AIRFLOW_PROJ_DIR:-.}/dbt:/opt/airflow/dbt
+    - ${AIRFLOW_PROJ_DIR:-.}/keys:/opt/airflow/keys:ro
+  user: "${AIRFLOW_UID:-50000}:0"
+  depends_on:
+    &airflow-common-depends-on
+    postgres:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-db-volume:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+    restart: always
+
+  airflow:
+    <<: *airflow-common
+    command: >
+      bash -c "airflow scheduler & airflow webserver"
+    ports:
+      - "8081:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-init:
+    <<: *airflow-common
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        mkdir -p /sources/logs /sources/dags /sources/plugins
+        chown -R "${AIRFLOW_UID:-50000}:0" /sources/{logs,dags,plugins}
+        exec /entrypoint airflow version
+    environment:
+      <<: *airflow-common-env
+      _AIRFLOW_DB_MIGRATE: 'true'
+      _AIRFLOW_WWW_USER_CREATE: 'true'
+      _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-airflow}
+      _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
+      _PIP_ADDITIONAL_REQUIREMENTS: ''
+    user: "0:0"
+    volumes:
+      - ${AIRFLOW_PROJ_DIR:-.}:/sources
+
+  superset:
+    image: apache/superset:4.1.1
+    user: root
+    environment:
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:-local-dev-only-change-me}
+    ports:
+      - "8088:8088"
+    volumes:
+      - superset-home:/app/superset_home
+      - ${AIRFLOW_PROJ_DIR:-.}/keys:/app/keys:ro
+    command: >
+      bash -c "pip install -q snowflake-sqlalchemy==1.6.1 snowflake-connector-python==3.12.2 &&
+               superset db upgrade &&
+               (superset fab create-admin --username admin --firstname Admin --lastname User --email admin@example.com --password admin || true) &&
+               superset init &&
+               /usr/bin/run-server.sh"
+    restart: always
+
+volumes:
+  postgres-db-volume:
+  superset-home:

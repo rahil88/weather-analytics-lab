@@ -1,0 +1,15 @@
+# Every value comes from an environment variable. In Airflow, the weather_dbt DAG
+# fills these from the "snowflake_conn" Connection. Locally, export them (see README).
+weather_analytics:
+  target: dev
+  outputs:
+    dev:
+      type: snowflake
+      account: "{{ env_var('DBT_ACCOUNT') }}"
+      user: "{{ env_var('DBT_USER') }}"
+      private_key_path: "{{ env_var('DBT_PRIVATE_KEY_PATH') }}"
+      role: "{{ env_var('DBT_ROLE') }}"
+      warehouse: "{{ env_var('DBT_WAREHOUSE') }}"
+      database: "{{ env_var('DBT_DATABASE') }}"
+      schema: "{{ env_var('DBT_SCHEMA', 'ANALYTICS') }}"
+      threads: 4

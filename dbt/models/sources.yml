@@ -1,0 +1,16 @@
+version: 2
+
+sources:
+  - name: raw
+    database: DEMO_DB
+    schema: RAW
+    description: Raw landing zone written by the Airflow weather_etl DAG.
+    tables:
+      - name: weather_daily
+        description: One row per city per day from the Open-Meteo forecast API (history + forecast).
+        loaded_at_field: loaded_at
+        columns:
+          - name: city
+            tests: [not_null]
+          - name: date
+            tests: [not_null]

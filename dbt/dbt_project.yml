@@ -1,0 +1,23 @@
+name: weather_analytics
+version: "1.0.0"
+config-version: 2
+
+profile: weather_analytics
+
+model-paths: ["models"]
+test-paths: ["tests"]
+snapshot-paths: ["snapshots"]
+macro-paths: ["macros"]
+
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+vars:
+  dry_day_threshold_mm: 1.0   # WMO convention: a day with < 1 mm of precipitation is "dry"
+
+models:
+  weather_analytics:
+    staging:
+      +materialized: view
+    marts:
+      +materialized: table

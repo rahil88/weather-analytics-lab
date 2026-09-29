@@ -1,0 +1,59 @@
+version: 2
+
+models:
+  - name: stg_weather_daily
+    description: Cleaned daily weather per city (view over RAW.WEATHER_DAILY).
+    columns:
+      - name: weather_id
+        description: Surrogate key, city|date.
+        tests: [unique, not_null]
+      - name: city
+        tests: [not_null]
+      - name: date
+        tests: [not_null]
+      - name: temp_mean_c
+        tests: [not_null]
+      - name: precipitation_mm
+        tests: [not_null]
+      - name: weather_category
+        tests:
+          - accepted_values:
+              values: ['Clear', 'Cloudy', 'Fog', 'Drizzle', 'Rain', 'Rain Showers',
+                       'Snow', 'Snow Showers', 'Thunderstorm', 'Unknown']
+      - name: is_forecast
+        tests: [not_null]
+
+  - name: weather_metrics
+    description: Daily per-city metrics - moving averages, temperature anomaly, rolling rainfall, dry spells.
+    columns:
+      - name: weather_id
+        tests:
+          - unique
+          - not_null
+          - relationships:
+              to: ref('stg_weather_daily')
+              field: weather_id
+      - name: temp_ma_7d_c
+        description: 7-day moving average of mean temperature (°C).
+        tests: [not_null]
+      - name: temp_ma_30d_c
+        description: 30-day moving average of mean temperature (°C).
+        tests: [not_null]
+      - name: temp_anomaly_c
+        description: Mean temperature minus the city's observed baseline (°C).
+        tests: [not_null]
+      - name: rain_rolling_7d_mm
+        description: Precipitation summed over the last 7 days (mm).
+        tests: [not_null]
+      - name: rain_rolling_30d_mm
+        description: Precipitation summed over the last 30 days (mm).
+        tests: [not_null]
+      - name: dry_spell_length_days
+        description: Consecutive dry days (< dry_day_threshold_mm) ending on this date; 0 on wet days.
+        tests: [not_null]
+
+  - name: city_weather_summary
+    description: One row per city with headline statistics over observed days.
+    columns:
+      - name: city
+        tests: [unique, not_null]
