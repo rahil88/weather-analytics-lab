@@ -6,6 +6,11 @@ the data into **Snowflake** with an idempotent **Airflow** ETL, then uses **dbt*
 analytical metrics (moving averages, temperature anomaly, rolling rainfall, dry-spell length). The
 results are shown in an **Apache Superset** dashboard.
 
+**Team:** Rahil Shah (Student ID 020755137) · Dev Faldu (Student ID 020792174), DATA 226, San José State University
+
+📄 **Full report (PDF):** [Weather_Prediction_Analytics_Report.pdf](Weather_Prediction_Analytics_Report.pdf)
+🔗 **Repository:** https://github.com/rahil88/weather-analytics-lab
+
 ![System architecture](docs/architecture.png)
 
 ---
@@ -21,9 +26,10 @@ results are shown in an **Apache Superset** dashboard.
 8. [BI dashboard (Superset)](#8-bi-dashboard-superset)
 9. [How to run](#9-how-to-run)
 10. [Repository structure](#10-repository-structure)
-11. [Future work](#11-future-work)
-12. [Conclusion](#12-conclusion)
-13. [References](#13-references)
+11. [Lessons](#11-lessons)
+12. [Future work](#12-future-work)
+13. [Conclusion](#13-conclusion)
+14. [References](#14-references)
 
 ---
 
@@ -428,6 +434,7 @@ cd dbt && dbt run --profiles-dir . && dbt test --profiles-dir . && dbt snapshot 
 ```
 weather-analytics-lab/
 ├── README.md                     # this report
+├── Weather_Prediction_Analytics_Report.pdf   # submitted report (PDF)
 ├── docker-compose.yaml           # Airflow 2.10.1 + Postgres + Superset 4.1.1
 ├── dags/
 │   ├── weather_etl.py            # Open-Meteo -> Snowflake ETL (transactional, idempotent)
@@ -440,7 +447,25 @@ weather-analytics-lab/
     └── screenshots/              # Airflow, dbt and Superset screenshots
 ```
 
-## 11. Future work
+## 11. Lessons
+
+1. **Data tests pay for themselves immediately.** The first `dbt test` run failed on 56 rows with NULL
+   temperatures. Open-Meteo's forecast endpoint keeps only about 63 days of history and returns empty
+   days beyond that. We fixed the root cause at extraction (skip empty days, fetch 60 days).
+2. **Idempotency means replacing what you asked for, not only what you received.** The load deletes the
+   full requested window, so stale rows inside it cannot survive a re-run.
+3. **In Snowflake, DDL auto-commits.** `CREATE TABLE` inside `BEGIN … COMMIT` silently ends the
+   transaction, so DDL runs before `BEGIN`.
+4. **Dataset scheduling beats time-offset crons.** dbt runs exactly when new data is committed, and never
+   after a failed ETL.
+5. **Configuration over code.** Our original Snowflake trial expired mid-project. Because credentials
+   live only in the Airflow Connection and dbt `env_var()`s, switching accounts needed no code change.
+6. **Identifier case matters across tools.** Snowflake reports unquoted identifiers in UPPER case, so
+   Superset dataset columns are `CITY` and `DATE`, not `city` and `date`.
+7. **Key-pair auth** avoids password/MFA prompts for service connections, and one private key file
+   serves Airflow, dbt and Superset.
+
+## 12. Future work
 
 * **Forecast accuracy.** The snapshot already keeps every version of each forecast day. Joining
   the version captured N days ahead against the final observed row would score the forecast's
@@ -456,7 +481,7 @@ weather-analytics-lab/
 * **Security.** Keep secrets in a secrets backend (e.g. AWS Secrets Manager) instead of the Airflow
   metadata database, and use a least-privilege Snowflake role instead of `ACCOUNTADMIN`.
 
-## 12. Conclusion
+## 13. Conclusion
 
 The project delivers an automated, daily ELT pipeline:
 
@@ -473,7 +498,7 @@ rain, while Seattle's September rain shows up in its rolling rainfall and reset 
 The anomaly view shows at a glance that the upcoming San Jose forecast is well above normal. Every
 layer can be re-run safely and extended through configuration.
 
-## 13. References
+## 14. References
 
 1. Open-Meteo Forecast API documentation: https://open-meteo.com/en/docs
 2. WMO weather interpretation codes (used for `weather_category`): https://open-meteo.com/en/docs#weathervariables
